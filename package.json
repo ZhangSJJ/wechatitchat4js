@@ -1,0 +1,12 @@
+{
+  "name": "wechatitchat4js",
+  "version": "1.0.0",
+  "description": "基于itchat4js完成的一个关于微信号中转消息的功能",
+  "author": "Kobe",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "itchat4js": "^1.0.3"
+  }
+}
