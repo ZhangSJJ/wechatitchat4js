@@ -7,6 +7,6 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "itchat4js": "^1.0.3"
+    "itchat4js": "^1.0.4"
   }
 }
