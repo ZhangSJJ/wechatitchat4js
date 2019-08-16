@@ -1,11 +1,26 @@
 /**
  * @time 2019/8/1
  */
-
 const path = require('path');
 const fetch = require('node-fetch');
+const schedule = require('node-schedule');
 const { default: ItChat4JS, EMIT_NAME, MESSAGE_TYPE, sendTextMsg, transmitMsg, sendFile, sendImage } = require('itchat4js');
+const { directiveMap, taskMap, taskType, weekday } = require('./ConstValues');
 const itChat4JSIns = new ItChat4JS();
+
+const subscribeType = [
+    MESSAGE_TYPE.TEXT,
+    MESSAGE_TYPE.MAP,
+    MESSAGE_TYPE.CARD,
+    MESSAGE_TYPE.NOTE,
+    MESSAGE_TYPE.SHARING,
+    MESSAGE_TYPE.PICTURE,
+    MESSAGE_TYPE.RECORDING,
+    MESSAGE_TYPE.VOICE,
+    MESSAGE_TYPE.ATTACHMENT,
+    MESSAGE_TYPE.VIDEO,
+    MESSAGE_TYPE.FRIENDS,
+];
 
 let mainCountInfo = null;
 
@@ -113,37 +128,6 @@ class HandleMainCountReplay {
     }
 }
 
-const arr = [
-    MESSAGE_TYPE.TEXT,
-    MESSAGE_TYPE.MAP,
-    MESSAGE_TYPE.CARD,
-    MESSAGE_TYPE.NOTE,
-    MESSAGE_TYPE.SHARING,
-    MESSAGE_TYPE.PICTURE,
-    MESSAGE_TYPE.RECORDING,
-    MESSAGE_TYPE.VOICE,
-    MESSAGE_TYPE.ATTACHMENT,
-    MESSAGE_TYPE.VIDEO,
-    MESSAGE_TYPE.FRIENDS,
-]
-const charRoomName = {
-    cityEast: '银亿东城九街区的朋友们',
-    test: '这是一个测试名称'
-};
-const helpDirective = '已支持的命令：\r\n' +
-    '1如何办理房产证\r\n' +
-    '2待完善';
-const directiveMap = {
-    //@3bb61d72d0eeb1bcf0c432a13d94c510 测试
-    [charRoomName.cityEast]: {
-        help: helpDirective,
-    },
-    [charRoomName.test]: {
-        help: helpDirective,
-    },
-
-};
-
 const addFriendsReq = [];
 const pushFriendReqToData = (reqInfo) => {
     const { UserName } = reqInfo;
@@ -164,7 +148,7 @@ const pushFriendReqToData = (reqInfo) => {
  */
 const main = async (name) => {
     const handleMainCountReplayIns = new HandleMainCountReplay(itChat4JSIns, name);
-    itChat4JSIns.listen(EMIT_NAME.CHAT_ROOM, null, async (msgInfo, toUserInfo) => {
+    itChat4JSIns.listen(EMIT_NAME.CHAT_ROOM, subscribeType, async (msgInfo, toUserInfo) => {
         const { type, text = '', filename, download, content, oriContent, isAt } = msgInfo;
         if (!isAt) {
             return;
@@ -187,7 +171,7 @@ const main = async (name) => {
         }
 
     });
-    itChat4JSIns.listen(EMIT_NAME.FRIEND, arr, async (msgInfo, toUserInfo) => {
+    itChat4JSIns.listen(EMIT_NAME.FRIEND, subscribeType, async (msgInfo, toUserInfo) => {
         mainCountInfo = mainCountInfo || itChat4JSIns.getContactInfoByName(name) || {};
         const mainCountUsername = mainCountInfo.UserName;
         const { UserName, RemarkName, NickName } = toUserInfo;
@@ -232,6 +216,7 @@ const main = async (name) => {
     });
     await itChat4JSIns.run();
     mainCountInfo = itChat4JSIns.getContactInfoByName(name);
+    scheduleTask();
 };
 
 
@@ -243,4 +228,69 @@ const fn = () => {
     }
 };
 fn();
+
+const fetchWeatherInfo = async () => {
+    const url = 'https://ic.snssdk.com/stream/widget/goapi/local/weather/?en_city=nj';
+    return new Promise(resolve => {
+        fetch(url).then(res => res.json()).then(res => {
+            if (res.message === 'success' && res.data && res.data.weather) {
+                resolve(res.data.weather)
+            } else {
+                resolve(null);
+            }
+        }).catch(() => {
+            resolve(null)
+        })
+    })
+
+};
+
+const scheduleTask = () => {
+    Object.keys(taskMap).map(chatRoomName => {
+        const taskInfo = taskMap[chatRoomName];
+        const timeArr = Object.keys(taskInfo);
+        timeArr.map(time => {
+            schedule.scheduleJob(time, async () => {
+                const typeArr = taskInfo[time];
+                const promiseArr = typeArr.map(type => {
+                    return new Promise(async resolve => {
+                        if (type === taskType.weather) {
+                            const ret = await fetchWeatherInfo();
+                            if (ret) {
+                                const now = convertDate();
+                                const text = '南京市\r\n' +
+                                    `${now.substr(0, 10)} | ${weekday[new Date().getDay()]}\r\n` +
+                                    `${ret.day_condition}\r\n` +
+                                    `低温 ${ret.low_temperature}℃,高温 ${ret.high_temperature}℃\r\n` +
+                                    `${ret.wind_direction}${ret.wind_level}级\r\n\r\n` +
+                                    `温度 ${ret.current_temperature}℃\r\n` +
+                                    `空气质量: ${ret.quality_level}\r\n` +
+                                    `更新时间: ${now}`;
+                                const toUserInfo = itChat4JSIns.getContactInfoByName(chatRoomName);
+                                if (toUserInfo) {
+                                    await sendTextMsg(text, toUserInfo.UserName);
+                                }
+                            }
+                            resolve();
+                        } else if (type === taskType.test) {
+                            console.log('test================')
+                            resolve();
+                        }
+                    })
+                });
+                await Promise.all(promiseArr);
+            })
+        });
+
+    });
+};
+
+
+const convertDate = (date) => {
+    date = date || new Date();
+    return [date.getFullYear(), '-', ('00' + (date.getMonth() + 1)).slice(-2), '-', ('00' + date.getDate()).slice(-2), ' ', ('00' + date.getHours()).slice(-2), ':', ('00' + date.getMinutes()).slice(-2), ':', ('00' + date.getSeconds()).slice(-2)].join('')
+};
+
+
+
 
