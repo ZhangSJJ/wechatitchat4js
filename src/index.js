@@ -40,7 +40,8 @@ class HandleMainCountReplay {
                 '1、TO XXX: ---> 设置消息发送的好友，以‘TO ’开头（TO后有空格），以‘:’英文冒号结尾，XXX为好友备注，或别名\r\n' +
                 '2、GET SEND FRIEND ---> 获取当前发送好友名称\r\n' +
                 '3、GET FRIEND REQ ---> 获取好友申请列表\r\n' +
-                '3、TF:X ---> 通过好友申请验证。X为好友序号';
+                '4、TF:X ---> 通过好友申请验证。X为好友序号\r\n' + '' +
+                '5、GET FRIEND LIST ---> 获取好友列表';
             await sendTextMsg(sendText, mainCountInfo.UserName);
             return;
         }
@@ -56,6 +57,13 @@ class HandleMainCountReplay {
             }
             return;
         }
+
+        if (text.trim() === 'GET FRIEND LIST') {
+            const list = itChat4JSIns.getContactInfoByName().sort((a, b) => a.PYQuanPin > b.PYQuanPin ? 1 : -1).map((i, id) => `${id + 1}、${i.RemarkName || i.NickName}`);
+            await sendTextMsg('好友列表：\r\n' + list.join('\r\n'), mainCountInfo.UserName);
+            return;
+        }
+
 
         if (text.trim().startsWith('TO ')) {
             //设置发送好友
@@ -188,7 +196,7 @@ const main = async (name) => {
             await transmitMsg(sendText, type, mainCountInfo.UserName);
         } else if (MESSAGE_TYPE.NOTE === type) {
             sendText = `Note: \r\n ${text}`;
-            await transmitMsg(sendText, type, mainCountInfo.UserName);
+            await transmitMsg(sendText, MESSAGE_TYPE.TEXT, mainCountInfo.UserName);
         } else if ([MESSAGE_TYPE.PICTURE, MESSAGE_TYPE.VIDEO, MESSAGE_TYPE.MAP].indexOf(type) !== -1) {
             await sendTextMsg(`${RemarkName || NickName}发来${type}:`, mainCountInfo.UserName);
             await transmitMsg(MESSAGE_TYPE.MAP === type ? oriContent : content, type, mainCountInfo.UserName);
