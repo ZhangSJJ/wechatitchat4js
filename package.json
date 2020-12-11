@@ -7,7 +7,7 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "itchat4js": "^1.0.5",
+    "itchat4js": "^1.0.11",
     "node-schedule": "^1.3.2"
   }
 }

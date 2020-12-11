@@ -22,92 +22,114 @@ const subscribeType = [
     MESSAGE_TYPE.FRIENDS,
 ];
 
-let mainCountInfo = null;
 
 class HandleMainCountReplay {
     constructor(itChat4JSIns, mainCountName) {
         this.itChat4JSIns = itChat4JSIns;
         this.mainCountName = mainCountName;
         this.toUsername = '';
+        this.toUsernameDesc = '';
+        this.autoReplay = false;
     }
 
     async doReplay(msgInfo) {
-        this.mainCountInfo = this.mainCountInfo || this.itChat4JSIns.getContactInfoByName(this.mainCountName) || {};
+        this.mainCountInfo = this.itChat4JSIns.getContactInfoByName(this.mainCountName) || {};
         const { type, text = '', filename, download, content = '', oriContent = '' } = msgInfo;
 
-        if (text.trim() === 'get help') {
+        const preText = text.trim().toUpperCase();
+
+        if (preText.trim() === 'GET HELP') {
             const sendText = 'Help：\r\n' +
                 '1、TO XXX: ---> 设置消息发送的好友，以‘TO ’开头（TO后有空格），以‘:’英文冒号结尾，XXX为好友备注，或别名\r\n' +
                 '2、GET SEND FRIEND ---> 获取当前发送好友名称\r\n' +
                 '3、GET FRIEND REQ ---> 获取好友申请列表\r\n' +
                 '4、TF:X ---> 通过好友申请验证。X为好友序号\r\n' + '' +
-                '5、GET FRIEND LIST ---> 获取好友列表';
-            await sendTextMsg(sendText, mainCountInfo.UserName);
+                '5、GET FRIEND LIST ---> 获取好友列表\r\n' +
+                '6、AUTO REPLAY 1---> 开启自动回复\r\n' +
+                '7、AUTO REPLAY 0---> 关闭自动回复';
+            await sendTextMsg(sendText, this.mainCountInfo.UserName);
             return;
         }
 
-        if (text.trim() === 'GET FRIEND REQ') {
+        if (preText.trim() === 'GET SEND FRIEND') {
+            await sendTextMsg('Tip：\r\n' + (!!this.toUsername ? `当前发送好友为：${this.toUsernameDesc}` : '当前没有设置发送好友'), this.mainCountInfo.UserName);
+            return;
+        }
+
+        if (preText.trim() === 'GET FRIEND REQ') {
             if (addFriendsReq.length > 0) {
                 const textArr = addFriendsReq.map(({ NickName, Content }, index) => {
                     return `${index + 1}、${NickName}说：${Content}`
                 });
-                await sendTextMsg('好友申请列表：\r\n' + textArr.join('\r\n'), mainCountInfo.UserName);
+                await sendTextMsg('好友申请列表：\r\n' + textArr.join('\r\n'), this.mainCountInfo.UserName);
             } else {
-                await sendTextMsg(`TIP: \r\n 没有好友申请信息。`, mainCountInfo.UserName);
+                await sendTextMsg(`TIP：\r\n 没有好友申请信息。`, this.mainCountInfo.UserName);
             }
             return;
         }
 
-        if (text.trim() === 'GET FRIEND LIST') {
+        if (preText.trim() === 'GET FRIEND LIST') {
             const list = itChat4JSIns.getContactInfoByName().sort((a, b) => a.PYQuanPin > b.PYQuanPin ? 1 : -1).map((i, id) => `${id + 1}、${i.RemarkName || i.NickName}`);
-            await sendTextMsg('好友列表：\r\n' + list.join('\r\n'), mainCountInfo.UserName);
+            await sendTextMsg('好友列表：\r\n' + list.join('\r\n'), this.mainCountInfo.UserName);
+            return;
+        }
+
+        if (preText.trim().startsWith('AUTO REPLAY')) {
+            const rest = preText.trim().replace(/AUTO REPLAY\s*/, '');
+            let sendText = 'Tip：\r\n设置自动回复失败。';
+            if (rest === '1' || rest === '0') {
+                this.autoReplay = rest === '1';
+                sendText = `Tip：\r\n${rest === '1' ? '开启' : '关闭'}自动回复`
+            }
+            await sendTextMsg(sendText, this.mainCountInfo.UserName);
             return;
         }
 
 
-        if (text.trim().startsWith('TO ')) {
+        if (preText.trim().startsWith('TO ')) {
             //设置发送好友
-            const match = text.match(/^TO (.*):\s*$/);
+            const match = preText.match(/^TO (.*):\s*$/);
             if (match && match[1]) {
                 const toUserInfo = this.itChat4JSIns.getContactInfoByName(match[1].trim());
                 if (toUserInfo) {
                     this.toUsername = toUserInfo.UserName;
-                    await sendTextMsg(`TIP: \r\n 设置发送好友'${match[1].trim()}'成功。`, mainCountInfo.UserName);
+                    this.toUsernameDesc = toUserInfo.RemarkName || toUserInfo.NickName || '';
+                    await sendTextMsg(`TIP：\r\n 设置发送好友'${match[1].trim()}'成功。`, this.mainCountInfo.UserName);
                 } else {
-                    await sendTextMsg(`TIP: \r\n 好友'${match[1].trim()}'不存在。`, mainCountInfo.UserName);
+                    await sendTextMsg(`TIP：\r\n 好友'${match[1].trim()}'不存在。`, this.mainCountInfo.UserName);
                 }
             } else {
-                await sendTextMsg(`TIP: \r\n 设置发送好友'${match[1].trim()}'失败。发送‘get help’获取相关命令。`, mainCountInfo.UserName);
+                await sendTextMsg(`TIP：\r\n 设置发送好友失败。发送‘get help’获取相关命令。`, this.mainCountInfo.UserName);
             }
             return;
         }
 
-        if (text.trim().startsWith('TF:')) {
+        if (preText.trim().toUpperCase().startsWith('TF:')) {
             const match = text.match(/^TF:(\d+)\s*$/);
             if (match && match[1]) {
                 const index = +match[1] - 1;
                 const friendReq = addFriendsReq[index];
                 if (friendReq) {
                     const { status, verifyContent, UserName, NickName } = friendReq;
-                    const ret = this.itChat4JSIns.verifyFriend(UserName, status, verifyContent);
-                    if (ret && ret.Ret === 0) {
-                        await sendTextMsg(`TIP: \r\n 通过'${NickName}'好友申请成功。`, mainCountInfo.UserName);
+                    const ret = await this.itChat4JSIns.verifyFriend(UserName, status, verifyContent);
+                    if (ret.BaseResponse && ret.BaseResponse.Ret === 0) {
+                        await sendTextMsg(`TIP：\r\n 通过'${NickName}'好友申请成功。`, this.mainCountInfo.UserName);
                     } else {
-                        await sendTextMsg(`TIP: \r\n 通过'${NickName}'好友申请失败。`, mainCountInfo.UserName);
+                        await sendTextMsg(`TIP：\r\n 通过'${NickName}'好友申请失败。`, this.mainCountInfo.UserName);
                     }
 
                 } else {
-                    await sendTextMsg(`TIP: \r\n 没有好友请求信息。发送‘GET FRIEND REQ’获取好友申请列表。`, mainCountInfo.UserName);
+                    await sendTextMsg(`TIP：\r\n 没有好友请求信息。发送‘GET FRIEND REQ’获取好友申请列表。`, this.mainCountInfo.UserName);
                 }
             } else {
-                await sendTextMsg(`TIP: \r\n 验证好友请求失败。发送‘get help’获取相关命令。`, mainCountInfo.UserName);
+                await sendTextMsg(`TIP：\r\n 验证好友请求失败。发送‘get help’获取相关命令。`, this.mainCountInfo.UserName);
             }
             return;
         }
 
 
         if (!this.toUsername) {
-            await sendTextMsg(`TIP: \r\n 发送好友'${text}'不存在！请确认发送好友。`, mainCountInfo.UserName);
+            await sendTextMsg(`TIP：\r\n 发送好友'${text}'不存在！请确认发送好友。`, this.mainCountInfo.UserName);
             return;
         }
 
@@ -129,7 +151,7 @@ class HandleMainCountReplay {
 
 
         if (!ret.BaseResponse || ret.BaseResponse.Ret !== 0) {
-            await sendTextMsg(`TIP: \r\n 发送消息失败，请重试。`, mainCountInfo.UserName);
+            await sendTextMsg(`TIP：\r\n 发送消息失败，请重试。`, this.mainCountInfo.UserName);
         }
 
 
@@ -180,7 +202,7 @@ const main = async (name) => {
 
     });
     itChat4JSIns.listen(EMIT_NAME.FRIEND, subscribeType, async (msgInfo, toUserInfo) => {
-        mainCountInfo = mainCountInfo || itChat4JSIns.getContactInfoByName(name) || {};
+        const mainCountInfo = itChat4JSIns.getContactInfoByName(name) || {};
         const mainCountUsername = mainCountInfo.UserName;
         const { UserName, RemarkName, NickName } = toUserInfo;
         const { type, text, filename, download, content, oriContent } = msgInfo;
@@ -194,6 +216,16 @@ const main = async (name) => {
         if (MESSAGE_TYPE.TEXT === type) {
             sendText = `${RemarkName || NickName}: \r\n ${text}`;
             await transmitMsg(sendText, type, mainCountInfo.UserName);
+            if (handleMainCountReplayIns.autoReplay && handleMainCountReplayIns.toUsername) {
+                const { result, content: msgContent } = await fetch('http://api.qingyunke.com/api.php?key=free&appid=0&msg=' + encodeURIComponent(text)).then(res => res.json());
+                const retMsg = result === 0 ? (msgContent || '').replace(/{br}/g, '\r\n').replace('\r\n提示：按分类看笑话请发送“笑话分类”', '') : '';
+                let tempText = `自动回复给‘${handleMainCountReplayIns.toUsernameDesc}’内容为：\r\n${retMsg}`;
+                if (!retMsg) {
+                    tempText = `自动回复‘${handleMainCountReplayIns.toUsernameDesc}’失败，请您回复。`
+                }
+                await sendTextMsg(retMsg, UserName);
+                await sendTextMsg(tempText, mainCountInfo.UserName);
+            }
         } else if (MESSAGE_TYPE.NOTE === type) {
             sendText = `Note: \r\n ${text}`;
             await transmitMsg(sendText, MESSAGE_TYPE.TEXT, mainCountInfo.UserName);
@@ -223,7 +255,6 @@ const main = async (name) => {
 
     });
     await itChat4JSIns.run();
-    mainCountInfo = itChat4JSIns.getContactInfoByName(name);
     scheduleTask();
 };
 
@@ -259,35 +290,42 @@ const scheduleTask = () => {
         const timeArr = Object.keys(taskInfo);
         timeArr.map(time => {
             schedule.scheduleJob(time, async () => {
-                const typeArr = taskInfo[time];
-                const promiseArr = typeArr.map(type => {
-                    return new Promise(async resolve => {
-                        if (type === taskType.weather) {
-                            const ret = await fetchWeatherInfo();
-                            if (ret) {
-                                const now = convertDate();
-                                const text = '南京市\r\n' +
-                                    `${now.substr(0, 10)} | ${weekday[new Date().getDay()]}\r\n` +
-                                    `${ret.day_condition}\r\n` +
-                                    `低温 ${ret.low_temperature}℃,高温 ${ret.high_temperature}℃\r\n` +
-                                    `${ret.wind_direction}${ret.wind_level}级\r\n\r\n` +
-                                    `温度 ${ret.current_temperature}℃\r\n` +
-                                    `空气质量: ${ret.quality_level}\r\n` +
-                                    `更新时间: ${now}`;
-                                const toUserInfo = itChat4JSIns.getContactInfoByName(chatRoomName);
-                                if (toUserInfo) {
-                                    await sendTextMsg(text, toUserInfo.UserName);
-                                }
+                (taskInfo[time] || []).map(async info => {
+                    const toUserInfo = itChat4JSIns.getContactInfoByName(chatRoomName);
+                    if (info.type === taskType.weather) {
+                        const ret = await fetchWeatherInfo();
+                        if (ret) {
+                            const now = convertDate();
+                            const text = '南京市\r\n' +
+                                `${now.substr(0, 10)} | ${weekday[new Date().getDay()]}\r\n` +
+                                `${ret.day_condition}\r\n` +
+                                `低温 ${ret.low_temperature}℃,高温 ${ret.high_temperature}℃\r\n` +
+                                `${ret.wind_direction}${ret.wind_level}级\r\n\r\n` +
+                                `温度 ${ret.current_temperature}℃\r\n` +
+                                `空气质量: ${ret.quality_level}\r\n` +
+                                `更新时间: ${now}`;
+                            if (toUserInfo) {
+                                await sendTextMsg(text, toUserInfo.UserName);
                             }
-                            resolve();
-                        } else if (type === taskType.test) {
-                            console.log('test================')
-                            resolve();
                         }
-                    })
-                });
-                await Promise.all(promiseArr);
-            })
+                    } else if (info.type === taskType.text) {
+                        if (toUserInfo) {
+                            let tempArr = info.text;
+                            if (!Array.isArray(tempArr)) {
+                                tempArr = [tempArr]
+                            }
+                            const promiseArr = tempArr.map(text => {
+                                return () => sendTextMsg(text, toUserInfo.UserName);
+                            });
+                            //按顺序发送
+                            await promiseArr.reduce((result, next) => {
+                                return result.then(() => next())
+                            }, Promise.resolve())
+                        }
+                    }
+                })
+
+            });
         });
 
     });
